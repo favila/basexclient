@@ -40,29 +40,31 @@ class BoundedBuffer(bytearray):
 
     def __init__(self):
         bytearray.__init__(self)
-        self.datalen = 0
+        self.reset()
 
     def reset(self):
-        self.datalen = 0
+        self.dataslice = slice(0, 0)
+
+    @property
+    def datalen(self):
+        ds = self.dataslice
+        return ds.stop-ds.start
 
     def slide_to(self, idx):
-        rest = memoryview(self)[idx:]
-        restlen = len(rest)
-        self[:restlen] = rest
-        self.datalen = restlen
+        self.dataslice = slice(self.dataslice.start + idx, self.dataslice.stop)
 
     def view(self, endat=None):
         if endat is None:
             endat = len(self)
-        endidx = min(self.datalen, endat)
-        return memoryview(self)[:endidx]
+        endidx = min(self.dataslice.stop, endat)
+        return memoryview(self)[self.dataslice.start:endidx]
 
     def isempty(self):
         return not self.datalen
 
     def readintome(self, readintomethod):
         bytesread = readintomethod(self)
-        self.datalen = bytesread
+        self.dataslice = slice(0, bytesread)
 
 
 class BufferedSocket(object):
