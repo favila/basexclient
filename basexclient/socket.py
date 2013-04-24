@@ -14,24 +14,23 @@ r_escapeable = re.compile(b'[{}{}]'.format(C00, CFF))
 r_escaped = re.compile(b'{}[{}{}]'.format(CFF, C00, CFF))
 r_unescaped_null = re.compile(b'(?<!{}){}'.format(CFF, C00))
 
-
 class Commands(object):
-    QUERY = b'\0'
-    CLOSE = b'\2'
-    BIND = b'\3'
-    RESULTS = b'\4'
-    EXECUTE = b'\5'
-    INFO = b'\6'
-    OPTIONS = b'\7'
-    CREATE = b'\8'
-    ADD = b'\9'
-    WATCH = b'\10'
-    UNWATCH = b'\11'
-    REPLACE = b'\12'
-    STORE = b'\13'
-    CONTEXT = b'\14'
-    UPDATING = b'\30'
-    FULL = b'\31'
+    QUERY = b'\x00'
+    CLOSE = b'\x02'
+    BIND = b'\x03'
+    RESULTS = b'\x04'
+    EXECUTE = b'\x05'
+    INFO = b'\x06'
+    OPTIONS = b'\x07'
+    CREATE = b'\x08'
+    ADD = b'\x09'
+    WATCH = b'\x0A'
+    UNWATCH = b'\x0B'
+    REPLACE = b'\x0C'
+    STORE = b'\x0D'
+    CONTEXT = b'\x0E'
+    UPDATING = b'\x1E'
+    FULL = b'\x1F'
 
 
 class BoundedBuffer(bytearray):
@@ -64,6 +63,7 @@ class BoundedBuffer(bytearray):
 
     def readintome(self, readintomethod):
         bytesread = readintomethod(self)
+        #pylint: disable=W0201
         self.dataslice = slice(0, bytesread)
 
 
@@ -131,7 +131,9 @@ class BufferedSocket(object):
 
 
 def next_null(ba, r_null=r_unescaped_null.search):
-    """Return a memoryview of bytes up to and including the next unescaped \\0 or None if not found"""
+    """Return memoryview of bytes up to and including the next unescaped null
+
+    Returns None if not found."""
     m = r_null(ba)
     if not m:
         return None
@@ -139,7 +141,7 @@ def next_null(ba, r_null=r_unescaped_null.search):
 
 
 def escape_bytearray(ba, start=0, end=None, r_escapeable=r_escapeable, IFF=IFF):
-    """Prefix escapeable characters in bytearray in-place; return number of escapes done
+    """Return number of escaped bytes after in-place escape of characters
 
     If start or end are supplied, will escape only data in that slice. Any
     bytes before or after will be untouched, but the index of following bytes
@@ -148,6 +150,7 @@ def escape_bytearray(ba, start=0, end=None, r_escapeable=r_escapeable, IFF=IFF):
     Return value will be number of bytes added.
 
     """
+    #pylint: disable=W0621
     if end is None:
         end = len(ba)
     findescapeable = lambda s, e, ba=ba, srch=r_escapeable.search: srch(ba, s, e)
@@ -165,7 +168,8 @@ def escape_bytearray(ba, start=0, end=None, r_escapeable=r_escapeable, IFF=IFF):
 
 
 def unescape_bytearray(ba, r_escaped=r_escaped):
-    """Remove the escape characters from a bytearray in-place; return length of valid data"""
+    """Return length of data after in-place removal of escape characters"""
+    #pylint: disable=W0621
     # need at least two characters for an escape sequence
     if len(ba) < 2:
         return len(ba)
@@ -185,7 +189,7 @@ def repack(ba, holes):
     mv = memoryview(ba)
     dslices = dataslices(holes, lenba)
     pstart = 0
-    for i, (dstart, dend) in enumerate(dslices):
+    for dstart, dend in dslices:
         pend = pstart + dend - dstart
         mv[pstart:pend] = mv[dstart:dend]
         pstart = pend
@@ -200,6 +204,7 @@ def dataslices(holes, clen=None):
     clen is the length of the collection. If not provided a slice of (_, None)
     will always be appended.
     """
+    #pylint: disable=C0301
     if clen <= 0 and clen is not None:
         return []
     if not holes:
