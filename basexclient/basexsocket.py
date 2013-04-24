@@ -34,12 +34,9 @@ class Commands(object):
 
 
 class BoundedBuffer(bytearray):
-    def __new__(cls, size=io.DEFAULT_BUFFER_SIZE):
-        return bytearray.__new__(cls, size)
-
-    def __init__(self):
-        bytearray.__init__(self)
-        self.reset()
+    def __init__(self, size=io.DEFAULT_BUFFER_SIZE):
+        super(BoundedBuffer, self).__init__(size)
+        self.dataslice = slice(0, 0)
 
     def reset(self):
         self.dataslice = slice(0, 0)
@@ -50,13 +47,31 @@ class BoundedBuffer(bytearray):
         return ds.stop-ds.start
 
     def slide_to(self, idx):
-        self.dataslice = slice(self.dataslice.start + idx, self.dataslice.stop)
+        if idx is None:
+            self.reset()
+        else:
+            self.dataslice = slice(self.dataslice.start + idx, self.dataslice.stop)
 
-    def view(self, endat=None):
-        if endat is None:
-            endat = len(self)
-        endidx = min(self.dataslice.stop, endat)
+    def view(self, nbytes=None):
+        """Return memoryview of next bytes without consuming them.
+
+        ``nbytes`` is the max number of bytes to return (maybe fewer).
+        """
+        if nbytes is None:
+            nbytes = len(self)
+        endidx = min(self.dataslice.stop, self.dataslice.start + nbytes)
         return memoryview(self)[self.dataslice.start:endidx]
+
+    def view_buf(self, nbytes=None):
+        """Return buffer of next bytes without consuming them.
+
+        Only needed by re objects in Python 2.7, which can't search
+        a memoryview
+        """
+        if nbytes is None:
+            nbytes = len(self)
+        maxlen = min(self.dataslice.stop-self.dataslice.start, nbytes)
+        return buffer(self, self.dataslice.start, maxlen)
 
     def isempty(self):
         return not self.datalen
@@ -96,7 +111,7 @@ class BufferedSocket(object):
         self.close()
         return False
 
-    def _recv_next_iter(self):
+    def _read_next_iter(self):
         """Yield memoryviews of buffers up to and including a null terminator.
 
         Used to implement recv_next_iter() and recv_next(). Use carefully:
@@ -107,27 +122,37 @@ class BufferedSocket(object):
         while True:
             if buf.isempty():
                 buf.readintome(do_readinto)
-            found = next_null(buf.view())
+            found = next_null(buf.view_buf())
             assert found != 0
             # if found is None, whole buffer is copied
             yield buf.view(found)
-            if found:
-                buf.slide_to(found)
+            buf.slide_to(found)
+            if found is not None:
                 return
 
-    def recv_next_iter(self):
+    def read_next_iter(self):
         """Yield bytes from socket up to and including a null terminator.
 
         This method is the same as recv_next() except it yields bytes as they
         are available instead of buffering them all into a bytearray. This
         can reduce latency for large responses, but it will be less efficient.
         """
-        for mv in self._recv_next_iter():
+        for mv in self._read_next_iter():
             yield mv.tobytes()
 
-    def recv_next(self):
+    def read_next(self):
         """Receive bytes up to and including an unescaped null terminator"""
-        return bytearray(self._recv_next_iter())
+        # This looks strange, but it's to reduce fragmentation
+        # Almost always we will only have to grab one chunk, so we allocate
+        # its memory all at once instead of growing an empty bytearray.
+        ba = None
+        for chunk in self._read_next_iter():
+            if ba is None:
+                ba = bytearray(chunk)
+            else:
+                ba.extend(chunk)
+        return ba if ba is not None else bytearray()
+
 
 
 def next_null(ba, r_null=r_unescaped_null.search):

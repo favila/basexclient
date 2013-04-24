@@ -2,7 +2,8 @@
 """Test basexsocket code"""
 from .. import basexsocket
 from StringIO import StringIO
-from nose.tools import eq_
+from nose.tools import eq_, ok_, raises
+from itertools import chain
 
 
 def test_dataslices():
@@ -32,12 +33,10 @@ def check_dataslices(holes, clen, expect):
     eq_(got, expect)
 
 
+@raises(ValueError)
 def test_dataslices_unsorted_holes():
     holes = [2, 1]
-    try:
-        basexsocket.dataslices(holes)
-    except ValueError:
-        pass
+    basexsocket.dataslices(holes)
 
 
 def test_repack():
@@ -154,21 +153,22 @@ def test_bounded_buffer():
     assert isinstance(bb, bytearray)
     assert bb.isempty()
     bb.readintome(readinto)
-    assert bb.datalen == 10
+    eq_(bb.datalen, 10)
     assert not bb.isempty()
-    assert isinstance(bb.view(), memoryview)
-    assert bb.view() == s
-    assert bb.view(5) == s[:5]
+    assert isinstance(bb.view(), (buffer, memoryview))
+    eq_(bb.view(),  s)
+    eq_(bb.view(5), s[:5])
     assert bb.view(100) == s
     bb.slide_to(4)
-    assert bb.datalen == 6
-    assert bb.view() == s[4:]
-    assert bb.view(100) == s[4:]
+    eq_(bb.datalen,  6)
+    eq_(bb.view(),  s[4:])
+    eq_(bb.view(100),  s[4:])
+    eq_(bb.view(1),  s[4])
     assert not bb.isempty()
     bb.readintome(readinto)
-    assert bb.view() == s
+    eq_(bb.view(), s)
     bb.reset()
-    assert bb.view() == b''
+    eq_(bb.view(), b'')
     assert bb.isempty()
 
 
@@ -185,3 +185,63 @@ class MockSocket(object):
 
     def close(self):
         self._closed = True
+
+
+def create_bufferedsocket(data):
+    soc = lambda: MockSocket(data)
+    return basexsocket.BufferedSocket(soc)
+
+
+def test_bufferedsocket_read_next():
+    data = b'0123456789\x00\x01'
+    with create_bufferedsocket(data) as bs:
+        eq_(bs.read_byte(), b'0')
+        eq_(bs.read_next(), b'123456789\x00')
+        eq_(bs.read_byte(), b'\x01')
+
+
+def test_bufferedsocket_multiboundary():
+    """Test how bufferedsocket works when multiple socket reads are needed"""
+    trailer =  b'\x0012\xFF\xFF345\x00\x01'
+    datagens = chain(
+        (b'_' for i in xrange(0xfff)),
+        b'X',
+        (b'_' for i in xrange(0xfff)),
+        b'X',
+        (b'_' for i in xrange(0xfff)),
+        b'X',
+        (b'_' for i in xrange(0xfff)),
+        b'X',
+        trailer
+    )
+    data = bytearray(datagens)
+    with create_bufferedsocket(data) as bs:
+        eq_(bs.read_next(), data[:0x4001])
+        eq_(bs.read_next(), trailer[1:9])
+
+def test_bufferedsocket_read_iter():
+    data = b'01234\xFF\x00\x0056789\x00\x01'
+    with create_bufferedsocket(data) as bs:
+        eq_(list(bs.read_next_iter()), [b'01234\xFF\x00\x00'])
+
+    data = bytearray(chain((b'X' for i in xrange(0x4000)), b'\x00\x00'))
+    with create_bufferedsocket(data) as bs:
+        chunkiter = bs.read_next_iter()
+        chunk = chunkiter.next()
+        ok_(len(chunk) < 0x4000)
+        ok_(all(c == b'X' for c in chunk))
+        # round 2
+        chunk = chunkiter.next()
+        ok_(len(chunk) < 0x4000)
+        ok_(all(c == b'X' for c in chunk))
+        # last chunk
+        for c in chunkiter:
+            chunk = c
+        ok_(len(chunk) < 0x4000)
+        ok_(all(c == b'X' for c in chunk[:-1]))
+        ok_(c[-1] == b'\x00')
+
+
+
+
+
