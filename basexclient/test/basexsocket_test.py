@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Test socket code"""
-from .. import socket
+"""Test basexsocket code"""
+from .. import basexsocket
 from StringIO import StringIO
 from nose.tools import eq_
 
@@ -28,14 +28,14 @@ def test_dataslices():
 
 
 def check_dataslices(holes, clen, expect):
-    got = socket.dataslices(holes, clen)
+    got = basexsocket.dataslices(holes, clen)
     eq_(got, expect)
 
 
 def test_dataslices_unsorted_holes():
     holes = [2, 1]
     try:
-        socket.dataslices(holes)
+        basexsocket.dataslices(holes)
     except ValueError:
         pass
 
@@ -65,7 +65,7 @@ def test_repack():
 
 def check_repack(ba, holes, expected_packed, expected_retval):
     ba_copy = ba[:]
-    got = socket.repack(ba_copy, holes)
+    got = basexsocket.repack(ba_copy, holes)
     eq_(got, expected_retval)
     eq_(ba_copy[:expected_retval], expected_packed)
 
@@ -84,7 +84,7 @@ def test_unescape_bytearray():
 
 def check_unescape_bytearray(ba, expected):
     ba_copy = ba[:]
-    packedlen = socket.unescape_bytearray(ba_copy)
+    packedlen = basexsocket.unescape_bytearray(ba_copy)
     eq_(ba_copy[:packedlen], expected)
 
 
@@ -103,7 +103,7 @@ def test_escape_bytearray():
 
 def check_escape_bytearray(ba, start, end, expected_escaped):
     ba_copy = ba[:]
-    replacements = socket.escape_bytearray(ba_copy, start, end)
+    replacements = basexsocket.escape_bytearray(ba_copy, start, end)
     eq_(replacements, len(ba_copy) - len(ba))
     eq_(ba_copy, expected_escaped)
 
@@ -139,7 +139,7 @@ def test_next_null():
 
 
 def check_next_null(s, expected):
-    found = socket.next_null(s)
+    found = basexsocket.next_null(s)
     eq_(found, expected)
 
 
@@ -150,7 +150,7 @@ def test_bounded_buffer():
         buf[:len(s)] = s
         return len(s)
 
-    bb = socket.BoundedBuffer()
+    bb = basexsocket.BoundedBuffer()
     assert isinstance(bb, bytearray)
     assert bb.isempty()
     bb.readintome(readinto)
