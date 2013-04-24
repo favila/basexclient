@@ -86,36 +86,48 @@ class BufferedSocket(object):
         """Connect to address (host, port)"""
         return cls(lambda: socket.create_connection(address))
 
+    def close(self):
+        return self._soc.close()
+
     def __enter__(self):
         return self
 
-    def __exit__(self, type, value, traceback):
-        self._soc.close()
+    def __exit__(self, type_, value, traceback):
+        self.close()
         return False
 
-    def __iter__(self):
-        """Return an iterator that calls recv_next on each iteration"""
-        for chunk in self.recv_next():
-            yield chunk
+    def _recv_next_iter(self):
+        """Yield memoryviews of buffers up to and including a null terminator.
 
-    def recv_next(self):
-        """Receive bytes up to and including an unescaped null terminator"""
+        Used to implement recv_next_iter() and recv_next(). Use carefully:
+        returned memoryviews must be materialized before the next yield!
+        """
         do_readinto = self._soc.recv_into
         buf = self._buf
-        rv = bytearray()
         while True:
             if buf.isempty():
                 buf.readintome(do_readinto)
             found = next_null(buf.view())
             assert found != 0
             # if found is None, whole buffer is copied
-            rv.extend(buf.view(found))
+            yield buf.view(found)
             if found:
                 buf.slide_to(found)
-                return rv
+                return
 
-    def __getattr__(self, name):
-        return getattr(self._soc, name)
+    def recv_next_iter(self):
+        """Yield bytes from socket up to and including a null terminator.
+
+        This method is the same as recv_next() except it yields bytes as they
+        are available instead of buffering them all into a bytearray. This
+        can reduce latency for large responses, but it will be less efficient.
+        """
+        for mv in self._recv_next_iter():
+            yield mv.tobytes()
+
+    def recv_next(self):
+        """Receive bytes up to and including an unescaped null terminator"""
+        return bytearray(self._recv_next_iter())
 
 
 def next_null(ba, r_null=r_unescaped_null.search):
