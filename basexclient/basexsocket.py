@@ -153,6 +153,15 @@ class BufferedSocket(object):
                 ba.extend(chunk)
         return ba if ba is not None else bytearray()
 
+    def read_byte(self):
+        """Return the next byte in the socket"""
+        do_readinto = self._soc.recv_into
+        buf = self._buf
+        if buf.isempty():
+            buf.readintome(do_readinto)
+        nextbyte = buf.view(1).tobytes()
+        buf.slide_to(1)
+        return nextbyte
 
 
 def next_null(ba, r_null=r_unescaped_null.search):
