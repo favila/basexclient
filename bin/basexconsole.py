@@ -32,10 +32,14 @@ def connect(host, port):
 import re
 quotedstring = re.compile(r"(\d+)|(['\"])(.*?)(?<!\\)\2")
 
-def parse_str(s):
-    
-    return [chr(int(m.group(1))) if m.group(1) else m.group(3) for m in quotedstring.finditer(s)]
 
+def parse_str(s):
+    parts = [chr(int(m.group(1))) if m.group(1) else m.group(3) for m in quotedstring.finditer(s)]
+    if not len(parts):
+        return None
+    if len(parts[0]) > 1:
+        parts = [parts[0][0], parts[0][1:]] + parts[1:]
+    return parts
    
 soc = connect('localhost',1984)
 authenticate(soc, 'admin', 'admin')
