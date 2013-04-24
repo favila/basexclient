@@ -163,6 +163,14 @@ class BufferedSocket(object):
         buf.slide_to(1)
         return nextbyte
 
+    def write(self, data):
+        """Return bytes of data sent in one system call."""
+        return self._soc.send(data)
+
+    def write_all(self, data):
+        """Write all data."""
+        self._soc.sendall(data)
+
 
 def next_null(ba, r_null=r_unescaped_null.search):
     """Return memoryview of bytes up to and including the next unescaped null
